@@ -37,3 +37,9 @@ PYTHONPATH=. pytest -q
 
 Use the equivalent commands with `services/completions/`. Compose, SQL Server migrations,
 the static UI, service-to-service calls, and CI/CD are planned next.
+
+## Initial image CI
+
+The workflow in `.github/workflows/images.yml` builds both service images on every push and pull
+request. On pushes to `main`, it also publishes them to GHCR using the commit SHA as the image
+tag. Pull requests and pushes to other branches build the images without publishing them.
