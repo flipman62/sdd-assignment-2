@@ -1,31 +1,9 @@
-## [1]. Use Flask with SQLite
-Date: 2026-10-09
-Status: Decided
-Context: The application needs a simple backend that can run in one container and store data locally.
-Decision: Use Flask because it is lightweight and easy to use. Use SQLite because it is required for the project and does not need a separate database service.
-Alternatives considered: Django was rejected because it would add more complexity than this small application needs.
-Consequences: The application will be simple to run and maintain, with the backend and database in one container.
+# Architecture Decision Record
 
-## [2]. Separate habits from completion tracking
-Date: 2026-10-12
-Status: Decided
-Context: The application needs two meaningful feature domains instead of only basic habit CRUD.
-Decision: Keep habit management responsible for creating, listing, and deleting habits. Keep completion tracking responsible for daily completion history and streak calculations, using the habit ID to connect the two domains.
-Alternatives considered: Keeping all behavior in one module was rejected because the domains would be harder to separate in a future service-based design.
-Consequences: Each domain has a clear responsibility and can be tested independently while still running in the same application for Assignment 1.
-
-## [3]. Store habits and completions in related SQLite tables
-Date: 2026-10-12
-Status: Decided
-Context: Both feature domains need persistent data, while a completion belongs to one habit.
-Decision: Store habits in a `habits` table and daily records in a `completions` table linked by `habit_id`. Enforce one completion per habit and date with a unique constraint, and delete completions when their habit is deleted.
-Alternatives considered: Storing completions as a list inside each habit was rejected because separate rows are easier to query and test.
-Consequences: SQLite enforces the relationship and prevents duplicate daily records. The schema can later be separated along the same domain boundary.
-
-## [4]. Test core behavior with pytest
-Date: 2026-10-12
-Status: Decided
-Context: The assignment requires automated tests and at least 70% coverage of the two domains' core logic.
-Decision: Use pytest with pytest-cov and test habit CRUD, completion rules, streaks, persistence, and cascade deletion using temporary SQLite databases. Keep framework-only details thinner than business behavior.
-Alternatives considered: Manual testing was rejected because it would not provide repeatable evidence or a coverage measurement.
-Consequences: The current suite provides repeatable checks and reached 98% coverage for `app.py`, while keeping the tests understandable for the comprehension check.
+| ADR | Date | Status | Context | Decision | Alternatives considered | Consequences |
+|---|---|---|---|---|---|---|
+| [1] | 2026-10-09 | Decided | The application needs a simple backend that can run in one container and store data locally. | Use Flask because it is lightweight and easy to use. Use SQLite because it is required for the project and does not need a separate database service. | Django was rejected because it would add more complexity than this small application needs. | The application will be simple to run and maintain, with the backend and database in one container. |
+| [2] | 2026-10-12 | Decided | The application needs two meaningful feature domains instead of only basic habit CRUD. | Keep habit management responsible for creating, listing, and deleting habits. Keep completion tracking responsible for daily completion history and streak calculations, using the habit ID to connect the two domains. | Keeping all behavior in one module was rejected because the domains would be harder to separate in a future service-based design. | Each domain has a clear responsibility and can be tested independently while still running in the same application for Assignment 1. |
+| [3] | 2026-10-12 | Decided | Both feature domains need persistent data, while a completion belongs to one habit. | Store habits in a `habits` table and daily records in a `completions` table linked by `habit_id`. Enforce one completion per habit and date with a unique constraint, and delete completions when their habit is deleted. | Storing completions as a list inside each habit was rejected because separate rows are easier to query and test. | SQLite enforces the relationship and prevents duplicate daily records. The schema can later be separated along the same domain boundary. |
+| [4] | 2026-10-12 | Decided | The assignment requires automated tests and at least 70% coverage of the two domains' core logic. | Use pytest with pytest-cov and test habit CRUD, completion rules, streaks, persistence, and cascade deletion using temporary SQLite databases. Keep framework-only details thinner than business behavior. | Manual testing was rejected because it would not provide repeatable checks or a coverage measurement. | The current suite provides repeatable checks and reached 98% coverage for `app.py`, while keeping the tests understandable for the comprehension check. |
+| [5] | 2026-11-11 | Decided | Assignment 2 requires every service image to be built on pushes and pull requests, while images must only be published after a successful change reaches `main`. | Use a GitHub Actions matrix job with one matrix entry for each service. Build the `habits` and `completions` Dockerfiles on every push and pull request. Log in to GHCR and push images only for a push to `main`, tagging each image with the commit SHA. Pull requests and other branch pushes build images without publishing them. | Separate duplicated jobs were rejected because the matrix keeps the two service build paths consistent. Publishing on pull requests was rejected because it could expose unreviewed images and does not satisfy the requirement that publishing happens on `main`. | Dockerfile errors are detected before merge, and each merged `main` commit can be identified in GHCR by its immutable commit-SHA image tags. Azure deployment and post-deployment health checks remain separate decisions for the later CD phase. |
