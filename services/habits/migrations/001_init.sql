@@ -1,0 +1,1 @@
+-- Service schema placeholder. SQL Server migrations will be implemented next.
