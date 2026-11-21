@@ -1,11 +1,32 @@
 import os
 from datetime import date, timedelta
+from urllib.error import HTTPError, URLError
+from urllib.request import urlopen
 
 from flask import Flask, jsonify, request
 
 
 app = Flask(__name__)
 completions = {}
+
+
+class HabitServiceUnavailable(Exception):
+    pass
+
+
+def habit_exists(habit_id):
+    base_url = os.environ.get("HABITS_URL", "http://habits:8000").rstrip("/")
+    timeout = float(os.environ.get("HABITS_TIMEOUT_S", "2"))
+
+    try:
+        with urlopen(f"{base_url}/habits/{habit_id}", timeout=timeout) as response:
+            return response.status == 200
+    except HTTPError as error:
+        if error.code == 404:
+            return False
+        raise HabitServiceUnavailable from error
+    except (URLError, TimeoutError, OSError) as error:
+        raise HabitServiceUnavailable from error
 
 
 @app.get("/health")
@@ -34,6 +55,19 @@ def record_completion(habit_id):
 
     if parsed_date > date.today():
         return jsonify({"error": "future completion dates are not allowed"}), 400
+
+    try:
+        exists = habit_exists(habit_id)
+    except HabitServiceUnavailable:
+        return jsonify(
+            {
+                "error": "habits service unavailable",
+                "habit_id": habit_id,
+            }
+        ), 503
+
+    if not exists:
+        return jsonify({"error": "habit not found"}), 404
 
     habit_completions = completions.setdefault(habit_id, set())
     already_recorded = parsed_date.isoformat() in {

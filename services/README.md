@@ -21,3 +21,16 @@ Run its tests from the service directory:
 ```bash
 PYTHONPATH=. pytest -q
 ```
+
+## Cross-service configuration
+
+The completions service verifies habits through the habits service before recording a
+completion.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `HABITS_URL` | `http://habits:8000` | Base URL of the habits service |
+| `HABITS_TIMEOUT_S` | `2` | Outbound habits request timeout |
+
+If habits is unavailable, completion recording returns HTTP `503` with a clear
+`habits service unavailable` response. If the habit does not exist, it returns HTTP `404`.

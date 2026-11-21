@@ -24,6 +24,14 @@ def list_habits():
     return jsonify(list(habits.values()))
 
 
+@app.get("/habits/<int:habit_id>")
+def get_habit(habit_id):
+    habit = habits.get(habit_id)
+    if habit is None:
+        return jsonify({"error": "habit not found"}), 404
+    return jsonify(habit)
+
+
 @app.post("/habits")
 def create_habit():
     global next_habit_id
