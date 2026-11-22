@@ -20,6 +20,28 @@ Each service currently contains:
 - a `migrations/` directory;
 - focused service tests.
 
+## Run the local system
+
+Start the habits service, completions service, and static UI together:
+
+```bash
+docker compose up --build
+```
+
+Local endpoints:
+
+| Component | URL |
+|---|---|
+| Static UI | http://localhost:8080 |
+| Habits service | http://localhost:8001 |
+| Completions service | http://localhost:8002 |
+
+The UI calls both services through the browser. The completions service also calls the habits
+service over the Compose network using `HABITS_URL=http://habits:8000`.
+
+The in-memory applications do not yet use SQL Server or migrations. Their data is reset whenever
+the containers restart.
+
 Run a service locally from its directory:
 
 ```bash
@@ -35,8 +57,8 @@ cd services/habits
 PYTHONPATH=. pytest -q
 ```
 
-Use the equivalent commands with `services/completions/`. Compose, SQL Server migrations,
-the static UI, service-to-service calls, and CI/CD are planned next.
+Use the equivalent commands with `services/completions/`. SQL Server migrations,
+service testing, and Azure deployment are planned next.
 
 ## Initial image CI
 

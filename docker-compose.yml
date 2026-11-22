@@ -1,0 +1,31 @@
+services:
+  habits:
+    build:
+      context: ./services/habits
+      dockerfile: Dockerfile
+    environment:
+      PORT: "8000"
+      GIT_SHA: local
+    ports:
+      - "8001:8000"
+
+  completions:
+    build:
+      context: ./services/completions
+      dockerfile: Dockerfile
+    environment:
+      PORT: "8000"
+      GIT_SHA: local
+      HABITS_URL: "http://habits:8000"
+      HABITS_TIMEOUT_S: "2"
+    ports:
+      - "8002:8000"
+    depends_on:
+      - habits
+
+  ui:
+    image: nginx:alpine
+    volumes:
+      - ./ui:/usr/share/nginx/html:ro
+    ports:
+      - "8080:80"

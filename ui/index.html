@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Habit Tracker</title>
+  </head>
+  <body>
+    <main>
+      <h1>Habit Tracker</h1>
+
+      <form id="habit-form">
+        <label>
+          Habit name
+          <input id="habit-name" name="name" required>
+        </label>
+        <button type="submit">Create habit</button>
+      </form>
+
+      <p id="status" role="status"></p>
+      <ul id="habits"></ul>
+    </main>
+
+    <script src="config.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
