@@ -83,6 +83,41 @@ PYTHONPATH=. pytest -q
 Use the equivalent commands with `services/completions/`. SQL Server migrations,
 service testing, and Azure deployment are planned next.
 
+## Tests and coverage
+
+Install the development dependencies for a service:
+
+```bash
+python -m pip install -r services/habits/requirements-dev.txt
+python -m pip install -r services/completions/requirements-dev.txt
+```
+
+Run each service suite with coverage:
+
+```bash
+cd services/habits
+PYTHONPATH=. pytest -q --cov=app --cov-report=term-missing
+
+cd ../completions
+PYTHONPATH=. pytest -q --cov=app --cov-report=term-missing
+```
+
+Run the cross-seam integration stub from the repository root:
+
+```bash
+PYTHONPATH=services/habits:services/completions pytest -q tests/test_cross_seam.py
+```
+
+## Request logging
+
+Both services write one stdout line for every HTTP request:
+
+```text
+method=POST path=/habits status=201 duration_ms=1.23
+```
+
+No database credentials or request payloads are included in these log lines.
+
 ## Initial image CI
 
 The workflow in `.github/workflows/images.yml` builds both service images on every push and pull

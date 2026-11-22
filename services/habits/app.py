@@ -1,4 +1,5 @@
 import os
+import time
 
 import pymssql
 from flask import Flask, jsonify, request
@@ -9,6 +10,11 @@ from db import health_check, run_migrations_with_retry
 app = Flask(__name__)
 
 
+@app.before_request
+def start_request_timer():
+    request.environ["request_started_at"] = time.perf_counter()
+
+
 @app.after_request
 def add_cors_headers(response):
     origin = request.headers.get("Origin")
@@ -16,6 +22,13 @@ def add_cors_headers(response):
         response.headers["Access-Control-Allow-Origin"] = origin
         response.headers["Access-Control-Allow-Headers"] = "Content-Type"
         response.headers["Access-Control-Allow-Methods"] = "GET,POST,DELETE,OPTIONS"
+    started_at = request.environ.get("request_started_at")
+    duration_ms = (time.perf_counter() - started_at) * 1000 if started_at else 0
+    print(
+        f'method={request.method} path={request.path} '
+        f'status={response.status_code} duration_ms={duration_ms:.2f}',
+        flush=True,
+    )
     return response
 
 
