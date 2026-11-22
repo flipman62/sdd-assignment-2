@@ -1,11 +1,12 @@
 import os
 
+import pymssql
 from flask import Flask, jsonify, request
+
+from db import health_check, run_migrations_with_retry
 
 
 app = Flask(__name__)
-habits = {}
-next_habit_id = 1
 
 
 @app.after_request
@@ -20,57 +21,103 @@ def add_cors_headers(response):
 
 @app.get("/health")
 def health():
-    return jsonify(
-        {
-            "status": "ok",
-            "db": "not-configured",
-            "version": os.environ.get("GIT_SHA", "dev"),
-        }
-    )
+    try:
+        health_check()
+        return jsonify(
+            {
+                "status": "ok",
+                "db": "ok",
+                "version": os.environ.get("GIT_SHA", "dev"),
+            }
+        )
+    except (pymssql.Error, OSError, RuntimeError):
+        return jsonify(
+            {
+                "status": "unhealthy",
+                "db": "unavailable",
+                "version": os.environ.get("GIT_SHA", "dev"),
+            }
+        ), 503
 
 
 @app.get("/habits")
 def list_habits():
-    return jsonify(list(habits.values()))
+    from db import connect
+
+    connection = connect()
+    try:
+        cursor = connection.cursor()
+        cursor.execute("SELECT id, name FROM dbo.habits ORDER BY id")
+        return jsonify([{"id": row[0], "name": row[1]} for row in cursor.fetchall()])
+    finally:
+        connection.close()
 
 
 @app.get("/habits/<int:habit_id>")
 def get_habit(habit_id):
-    habit = habits.get(habit_id)
-    if habit is None:
-        return jsonify({"error": "habit not found"}), 404
-    return jsonify(habit)
+    from db import connect
+
+    connection = connect()
+    try:
+        cursor = connection.cursor()
+        cursor.execute("SELECT id, name FROM dbo.habits WHERE id = %d", (habit_id,))
+        row = cursor.fetchone()
+        if row is None:
+            return jsonify({"error": "habit not found"}), 404
+        return jsonify({"id": row[0], "name": row[1]})
+    finally:
+        connection.close()
 
 
 @app.post("/habits")
 def create_habit():
-    global next_habit_id
-
     payload = request.get_json(silent=True) or {}
     name = payload.get("name")
     if not isinstance(name, str) or not name.strip():
         return jsonify({"error": "name must be a non-empty string"}), 400
 
     habit_name = name.strip()
-    if any(habit["name"].casefold() == habit_name.casefold() for habit in habits.values()):
-        return jsonify({"error": "a habit with that name already exists"}), 409
+    from db import connect
 
-    habit = {"id": next_habit_id, "name": habit_name}
-    habits[next_habit_id] = habit
-    next_habit_id += 1
-    return jsonify(habit), 201
+    connection = connect()
+    try:
+        cursor = connection.cursor()
+        cursor.execute(
+            "SELECT id FROM dbo.habits WHERE LOWER(name) = LOWER(%s)",
+            (habit_name,),
+        )
+        if cursor.fetchone():
+            return jsonify({"error": "a habit with that name already exists"}), 409
+        cursor.execute(
+            "INSERT INTO dbo.habits (name) OUTPUT INSERTED.id, INSERTED.name "
+            "VALUES (%s)",
+            (habit_name,),
+        )
+        row = cursor.fetchone()
+        return jsonify({"id": row[0], "name": row[1]}), 201
+    except pymssql.IntegrityError:
+        return jsonify({"error": "a habit with that name already exists"}), 409
+    finally:
+        connection.close()
 
 
 @app.delete("/habits/<int:habit_id>")
 def delete_habit(habit_id):
-    if habit_id not in habits:
-        return jsonify({"error": "habit not found"}), 404
+    from db import connect
 
-    del habits[habit_id]
-    return "", 204
+    connection = connect()
+    try:
+        cursor = connection.cursor()
+        cursor.execute("DELETE FROM dbo.habits WHERE id = %d", (habit_id,))
+        if cursor.rowcount == 0:
+            return jsonify({"error": "habit not found"}), 404
+        return "", 204
+    finally:
+        connection.close()
 
 
 if __name__ == "__main__":
+    run_migrations_with_retry()
     app.run(
         host="0.0.0.0",
         port=int(os.environ.get("PORT", "8000")),

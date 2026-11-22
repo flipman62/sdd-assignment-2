@@ -3,11 +3,13 @@ from datetime import date, timedelta
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
+import pymssql
 from flask import Flask, jsonify, request
+
+from db import connect, health_check, run_migrations_with_retry
 
 
 app = Flask(__name__)
-completions = {}
 
 
 @app.after_request
@@ -41,13 +43,23 @@ def habit_exists(habit_id):
 
 @app.get("/health")
 def health():
-    return jsonify(
-        {
-            "status": "ok",
-            "db": "not-configured",
-            "version": os.environ.get("GIT_SHA", "dev"),
-        }
-    )
+    try:
+        health_check()
+        return jsonify(
+            {
+                "status": "ok",
+                "db": "ok",
+                "version": os.environ.get("GIT_SHA", "dev"),
+            }
+        )
+    except (pymssql.Error, OSError, RuntimeError):
+        return jsonify(
+            {
+                "status": "unhealthy",
+                "db": "unavailable",
+                "version": os.environ.get("GIT_SHA", "dev"),
+            }
+        ), 503
 
 
 @app.post("/habits/<int:habit_id>/completions")
@@ -79,46 +91,84 @@ def record_completion(habit_id):
     if not exists:
         return jsonify({"error": "habit not found"}), 404
 
-    habit_completions = completions.setdefault(habit_id, set())
-    already_recorded = parsed_date.isoformat() in {
-        value.isoformat() for value in habit_completions
-    }
-    habit_completions.add(parsed_date)
+    connection = connect()
+    try:
+        cursor = connection.cursor()
+        cursor.execute(
+            "SELECT 1 FROM dbo.completions "
+            "WHERE habit_id = %d AND completion_date = %s",
+            (habit_id, parsed_date.isoformat()),
+        )
+        already_recorded = cursor.fetchone() is not None
 
-    return jsonify(
-        {
-            "habit_id": habit_id,
-            "completion_date": parsed_date.isoformat(),
-            "already_recorded": already_recorded,
-        }
-    ), 200
+        if not already_recorded:
+            cursor.execute(
+                "INSERT INTO dbo.completions (habit_id, completion_date) "
+                "VALUES (%d, %s)",
+                (habit_id, parsed_date.isoformat()),
+            )
+
+        return jsonify(
+            {
+                "habit_id": habit_id,
+                "completion_date": parsed_date.isoformat(),
+                "already_recorded": already_recorded,
+            }
+        ), 200
+    finally:
+        connection.close()
 
 
 @app.get("/habits/<int:habit_id>/completions")
 def list_completions(habit_id):
-    completion_dates = sorted(completions.get(habit_id, set()), reverse=True)
-    return jsonify(
-        {
-            "habit_id": habit_id,
-            "completions": [value.isoformat() for value in completion_dates],
-        }
-    )
+    connection = connect()
+    try:
+        cursor = connection.cursor()
+        cursor.execute(
+            "SELECT completion_date FROM dbo.completions "
+            "WHERE habit_id = %d ORDER BY completion_date DESC",
+            (habit_id,),
+        )
+        return jsonify(
+            {
+                "habit_id": habit_id,
+                "completions": [
+                    row[0].isoformat() if hasattr(row[0], "isoformat") else str(row[0])
+                    for row in cursor.fetchall()
+                ],
+            }
+        )
+    finally:
+        connection.close()
 
 
 @app.get("/habits/<int:habit_id>/streak")
 def streak(habit_id):
-    completed_dates = completions.get(habit_id, set())
-    reference_date = date.today()
-    streak_count = 0
+    connection = connect()
+    try:
+        cursor = connection.cursor()
+        cursor.execute(
+            "SELECT completion_date FROM dbo.completions WHERE habit_id = %d",
+            (habit_id,),
+        )
+        completed_dates = {
+            row[0].date() if hasattr(row[0], "date") else date.fromisoformat(str(row[0]))
+            for row in cursor.fetchall()
+        }
+        reference_date = date.today()
+        streak_count = 0
 
-    while reference_date in completed_dates:
-        streak_count += 1
-        reference_date -= timedelta(days=1)
+        while reference_date in completed_dates:
+            streak_count += 1
+            reference_date -= timedelta(days=1)
 
-    return jsonify({"habit_id": habit_id, "streak": streak_count})
+        return jsonify({"habit_id": habit_id, "streak": streak_count})
+    finally:
+        connection.close()
 
 
 if __name__ == "__main__":
+    run_migrations_with_retry()
     app.run(
         host="0.0.0.0",
         port=int(os.environ.get("PORT", "8000")),

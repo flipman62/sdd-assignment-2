@@ -1,4 +1,42 @@
 services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: "Developer"
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD}
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$${MSSQL_SA_PASSWORD}\" -C -Q \"SELECT 1\" >/dev/null || exit 1"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  db-init:
+    image: mcr.microsoft.com/mssql-tools:latest
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    environment:
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD}
+      HABITS_DB_PASSWORD: ${HABITS_DB_PASSWORD}
+      COMPLETIONS_DB_PASSWORD: ${COMPLETIONS_DB_PASSWORD}
+    volumes:
+      - ./db/init.sql:/init.sql:ro
+    command:
+      - /bin/bash
+      - -c
+      - sed -e "s/HABITS_PASSWORD_PLACEHOLDER/$${HABITS_DB_PASSWORD}/g" -e "s/COMPLETIONS_PASSWORD_PLACEHOLDER/$${COMPLETIONS_DB_PASSWORD}/g" /init.sql >/tmp/init.sql && /opt/mssql-tools/bin/sqlcmd -S sqlserver -U sa -P "$$MSSQL_SA_PASSWORD" -C -i /tmp/init.sql
+    restart: "no"
+
   habits:
     build:
       context: ./services/habits
@@ -6,8 +44,13 @@ services:
     environment:
       PORT: "8000"
       GIT_SHA: local
+      DATABASE_URL: mssql+pymssql://habits_user:${HABITS_DB_PASSWORD}@sqlserver:1433/habits_db
+      DB_CONNECT_TIMEOUT_S: "30"
     ports:
       - "8001:8000"
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
 
   completions:
     build:
@@ -18,10 +61,15 @@ services:
       GIT_SHA: local
       HABITS_URL: "http://habits:8000"
       HABITS_TIMEOUT_S: "2"
+      DATABASE_URL: mssql+pymssql://completions_user:${COMPLETIONS_DB_PASSWORD}@sqlserver:1433/completions_db
+      DB_CONNECT_TIMEOUT_S: "30"
     ports:
       - "8002:8000"
     depends_on:
-      - habits
+      habits:
+        condition: service_started
+      db-init:
+        condition: service_completed_successfully
 
   ui:
     image: nginx:alpine
@@ -29,3 +77,6 @@ services:
       - ./ui:/usr/share/nginx/html:ro
     ports:
       - "8080:80"
+
+volumes:
+  sqlserver-data:

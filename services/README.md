@@ -34,3 +34,9 @@ completion.
 
 If habits is unavailable, completion recording returns HTTP `503` with a clear
 `habits service unavailable` response. If the habit does not exist, it returns HTTP `404`.
+
+## Database configuration
+
+Each service reads `DATABASE_URL` and optionally `DB_CONNECT_TIMEOUT_S`. The local Compose
+stack supplies a separate credentials/login and database to each service. Both services apply
+their numbered migrations at startup and expose database-aware `/health` responses.

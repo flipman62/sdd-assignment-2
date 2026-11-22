@@ -25,6 +25,7 @@ Each service currently contains:
 Start the habits service, completions service, and static UI together:
 
 ```bash
+cp .env.example .env
 docker compose up --build
 ```
 
@@ -39,8 +40,30 @@ Local endpoints:
 The UI calls both services through the browser. The completions service also calls the habits
 service over the Compose network using `HABITS_URL=http://habits:8000`.
 
-The in-memory applications do not yet use SQL Server or migrations. Their data is reset whenever
-the containers restart.
+The stack includes one SQL Server container holding separate `habits_db` and
+`completions_db` databases. Habits and completions use separate database logins. SQL Server data
+is kept in the `sqlserver-data` named volume, so it survives container recreation.
+
+## Database migrations
+
+Each service applies numbered migrations from its own `migrations/` directory at startup.
+Applied migrations are recorded in `schema_migrations`, so repeated boots apply nothing twice.
+
+The habits database includes:
+
+- `001_init.sql`: creates the habits table.
+- `002_add_due_date.sql`: adds a due-date column to a table that may already contain data.
+
+The completions database includes:
+
+- `001_init.sql`: creates the completions table.
+- `002_add_source.sql`: adds a source column to existing completion records.
+
+Stop the stack without deleting data:
+
+```bash
+docker compose down
+```
 
 Run a service locally from its directory:
 
