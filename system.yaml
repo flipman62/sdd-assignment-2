@@ -1,0 +1,74 @@
+# yaml-language-server: $schema=./system.schema.json
+student: flipman62
+prefix: flipman62
+public_url: https://example.azurestaticapps.net
+ui:
+  path: ui
+  static_web_app: flipman62-ui
+  calls: [habits, completions]
+azure:
+  resource_group: rg-sdd-3a
+  container_apps_environment: flipman62-env
+  sql_server: flipman62-sql
+  registry: ghcr.io/flipman62
+services:
+  habits:
+    description: Habit lifecycle and habit-owned data.
+    path: services/habits
+    openapi: services/habits/openapi.yaml
+    port_default: 8000
+    health: /health
+    migrations: services/habits/migrations
+    env:
+      PORT:
+        default: 8000
+        description: Port the service listens on.
+      GIT_SHA:
+        default: dev
+        description: Git commit SHA reported by the service.
+      DATABASE_URL:
+        secret: true
+        description: SQL Server connection string for the habits database.
+      DB_CONNECT_TIMEOUT_S:
+        default: 30
+        description: SQL Server connection timeout in seconds.
+    calls: []
+    azure:
+      container_app: flipman62-habits
+      sql_database: flipman62-habits-db
+  completions:
+    description: Completion history and consecutive-day streaks.
+    path: services/completions
+    openapi: services/completions/openapi.yaml
+    port_default: 8000
+    health: /health
+    migrations: services/completions/migrations
+    env:
+      PORT:
+        default: 8000
+        description: Port the service listens on.
+      GIT_SHA:
+        default: dev
+        description: Git commit SHA reported by the service.
+      DATABASE_URL:
+        secret: true
+        description: SQL Server connection string for the completions database.
+      DB_CONNECT_TIMEOUT_S:
+        default: 30
+        description: SQL Server connection timeout in seconds.
+      HABITS_URL:
+        default: http://habits:8000
+        description: Base URL of the habits service.
+      HABITS_TIMEOUT_S:
+        default: 2
+        description: Timeout for calls to habits in seconds.
+    calls:
+      - service: habits
+        url_env: HABITS_URL
+        endpoints:
+          - "GET /habits/{habit_id}"
+        timeout_s: 2
+        on_failure: Completion recording returns a clear 503 response.
+    azure:
+      container_app: flipman62-completions
+      sql_database: flipman62-completions-db

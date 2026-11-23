@@ -118,6 +118,34 @@ method=POST path=/habits status=201 duration_ms=1.23
 
 No database credentials or request payloads are included in these log lines.
 
+## System and API documentation
+
+The repository includes machine-readable system and API descriptions:
+
+- `services/habits/openapi.yaml`
+- `services/completions/openapi.yaml`
+- `system.schema.json`
+- `system.yaml`
+
+Validate them locally:
+
+```bash
+python -m pip install -r requirements-ci.txt
+python scripts/validate_documents.py
+```
+
+## Continuous integration
+
+The `.github/workflows/ci.yml` workflow runs on every push and pull request:
+
+- validates `system.yaml` and both OpenAPI documents;
+- lints and tests each service;
+- fails below 70% core coverage;
+- runs the cross-seam integration test;
+- builds both Docker images.
+
+The workflow publishes each image to GHCR with the commit SHA tag only for a push to `main`.
+
 ## Initial image CI
 
 The workflow in `.github/workflows/images.yml` builds both service images on every push and pull

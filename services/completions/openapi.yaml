@@ -1,0 +1,149 @@
+openapi: 3.0.3
+info:
+  title: Completions Service
+  version: 1.0.0
+paths:
+  /health:
+    get:
+      summary: Check completions service and its database
+      responses:
+        "200":
+          description: Service and database are healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+        "503":
+          description: Database is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+  /habits/{habit_id}/completions:
+    parameters:
+      - name: habit_id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      summary: List completion dates for a habit
+      responses:
+        "200":
+          description: Completion history returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompletionHistory"
+    post:
+      summary: Record a completion
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                completion_date:
+                  type: string
+                  format: date
+      responses:
+        "200":
+          description: Completion recorded or already present
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Completion"
+        "400":
+          description: Invalid completion date
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Habit not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Habits service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceUnavailable"
+  /habits/{habit_id}/streak:
+    parameters:
+      - name: habit_id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      summary: Calculate the current consecutive-day streak
+      responses:
+        "200":
+          description: Streak returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Streak"
+components:
+  schemas:
+    Health:
+      type: object
+      required: [status, db, version]
+      properties:
+        status:
+          type: string
+          enum: [ok, unhealthy]
+        db:
+          type: string
+          enum: [ok, unavailable]
+        version:
+          type: string
+    Completion:
+      type: object
+      required: [habit_id, completion_date, already_recorded]
+      properties:
+        habit_id:
+          type: integer
+        completion_date:
+          type: string
+          format: date
+        already_recorded:
+          type: boolean
+    CompletionHistory:
+      type: object
+      required: [habit_id, completions]
+      properties:
+        habit_id:
+          type: integer
+        completions:
+          type: array
+          items:
+            type: string
+            format: date
+    Streak:
+      type: object
+      required: [habit_id, streak]
+      properties:
+        habit_id:
+          type: integer
+        streak:
+          type: integer
+          minimum: 0
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+    ServiceUnavailable:
+      type: object
+      required: [error, habit_id]
+      properties:
+        error:
+          type: string
+        habit_id:
+          type: integer
