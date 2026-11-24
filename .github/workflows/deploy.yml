@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -86,7 +87,8 @@ jobs:
           python-version: "3.12"
 
       - name: Install SQL driver
-        run: python -m pip install --only-binary=:all: pymssql==2.3.7
+        run: |
+          python -m pip install --only-binary=:all: pymssql==2.3.7
 
       - name: Create service database users
         env:
