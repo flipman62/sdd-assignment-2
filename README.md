@@ -10,14 +10,14 @@ Assignment 1 contract checker have been removed because they are replaced by the
 structure required for Assignment 2. The Assignment 1 decisions and AI disclosure remain in
 [ADR.md](ADR.md) and [AI_USAGE.md](AI_USAGE.md).
 
-## Current service scaffold
+## Services
 
-Each service currently contains:
+Each service contains:
 
-- `app.py` with a health endpoint and initial domain route;
+- `app.py` with domain routes and a database-aware health endpoint;
 - a pinned `requirements.txt`;
 - a dedicated non-root `Dockerfile`;
-- a `migrations/` directory;
+- versioned SQL migrations;
 - focused service tests.
 
 ## Run the local system
@@ -80,8 +80,7 @@ cd services/habits
 PYTHONPATH=. pytest -q
 ```
 
-Use the equivalent commands with `services/completions/`. SQL Server migrations,
-service testing, and Azure deployment are planned next.
+Use the equivalent commands with `services/completions/`.
 
 ## Tests and coverage
 
@@ -136,7 +135,8 @@ python scripts/validate_documents.py
 
 ## Continuous integration
 
-The `.github/workflows/ci.yml` workflow runs on every push and pull request:
+The reusable `.github/workflows/ci.yml` workflow runs on pushes to non-main branches,
+pull requests, and calls from the main-branch deployment workflow:
 
 - validates `system.yaml` and both OpenAPI documents;
 - lints and tests each service;
@@ -144,10 +144,127 @@ The `.github/workflows/ci.yml` workflow runs on every push and pull request:
 - runs the cross-seam integration test;
 - builds both Docker images.
 
-The workflow publishes each image to GHCR with the commit SHA tag only for a push to `main`.
+The `.github/workflows/deploy.yml` workflow calls CI on pushes to `main`. It publishes both
+images to GHCR with the commit SHA tag and `provenance: false`. Pull requests and other branch
+pushes build but do not publish images.
 
-## Initial image CI
+## Azure setup and deployment
 
-The workflow in `.github/workflows/images.yml` builds both service images on every push and pull
+This project follows the individual Azure for Students setup in the course guide. The existing
+resource group is `rg-gmahler-ieu2024` in `spaincentral`; **do not create or replace it**. The
+current subscription policy allows `spaincentral`, `francecentral`, `uksouth`, `norwayeast`,
+and `swedencentral`. The Container Apps environment, Log Analytics workspace, and UI Storage
+account use the resource-group region. Azure SQL uses `francecentral`, because the guide says
+the SQL free offer isn't available in `spaincentral`. Before deployment, confirm in Azure that
+the SQL free offer is available in the selected region; if it isn't, stop and choose another
+allowed region rather than switching to a billable tier:
+
+```bash
+az account set --subscription <Azure-for-Students-subscription-id>
+az group show --name rg-gmahler-ieu2024 --query '{name:name,location:location}' -o table
+```
+
+The SQL template configures both service databases for the [Azure SQL free tier](https://learn.microsoft.com/en-us/azure/azure-sql/database/free-tier?view=azuresql)
+and `AutoPause` when monthly free limits are reached. The current offer permits up to ten free
+General Purpose databases per subscription; it is not the unsupported Azure for Students
+Starter offer. Supporting resources such as Container Apps and Log Analytics can still use
+Azure for Students credits. Review usage and costs in the portal.
+
+### One-time Azure and GitHub setup
+
+1. Sign in with the Azure for Students account, select that subscription, and verify that the
+   existing resource group is visible. Register the providers used by this deployment:
+
+   ```bash
+   for provider in Microsoft.App Microsoft.OperationalInsights Microsoft.Sql Microsoft.Storage Microsoft.ManagedIdentity; do
+     az provider register --namespace "$provider" --wait
+   done
+   ```
+2. Preview and create the GitHub Actions user-assigned managed identity. It is named
+   `gmahler-ieu2024-github`, has Contributor and Storage Blob Data Contributor access scoped
+   to this resource group, and trusts the `main` branch through both the readable and immutable
+   GitHub OIDC subject formats:
+
+   ```bash
+   az deployment group what-if \
+     --resource-group rg-gmahler-ieu2024 \
+     --template-file infra/identity.bicep \
+     --parameters \
+       prefix=gmahler-ieu2024 \
+       repoOwner=flipman62 \
+       repoName=sdd-assignment-2 \
+       repoOwnerId=182077556 \
+       repoId=1454105521
+
+   az deployment group create \
+     --resource-group rg-gmahler-ieu2024 \
+     --template-file infra/identity.bicep \
+     --parameters \
+       prefix=gmahler-ieu2024 \
+       repoOwner=flipman62 \
+       repoName=sdd-assignment-2 \
+       repoOwnerId=182077556 \
+       repoId=1454105521 \
+     --query properties.outputs -o json
+   ```
+
+3. Add these repository Actions variables:
+
+   | Variable | Value |
+   |---|---|
+   | `PREFIX` | `gmahler-ieu2024` |
+   | `RESOURCE_GROUP` | `rg-gmahler-ieu2024` |
+   | `UI_STORAGE` | `gmahlerieu2024ui` |
+   | `SQL_LOCATION` | `francecentral` |
+
+   `gmahlerieu2024ui` was available when checked; Storage account names are globally unique,
+   so recheck availability if it is taken before deployment.
+4. Add these repository Actions secrets. Obtain the identity client ID from the deployment
+   output, and the tenant and subscription IDs from `az account show`. Generate strong,
+   unique SQL passwords and store them only in GitHub:
+
+   | Secret | Purpose |
+   |---|---|
+   | `AZURE_CLIENT_ID` | Client ID output by `infra/identity.bicep` |
+   | `AZURE_TENANT_ID` | Tenant ID of the Azure for Students subscription |
+   | `AZURE_SUBSCRIPTION_ID` | Azure for Students subscription ID |
+   | `SQL_ADMIN_PASSWORD` | SQL Server administrator password |
+   | `HABITS_DB_PASSWORD` | Contained user password for the habits database |
+   | `COMPLETIONS_DB_PASSWORD` | Contained user password for the completions database |
+
+   No client secret, Static Web Apps token, or GHCR pull token is used. Azure login uses GitHub
+   OIDC; the Container Apps pull public GHCR images, and the workflow uploads the UI using
+   Azure RBAC. The SQL passwords are URL-encoded for the application connection strings and
+   escaped before they are used in SQL.
+
+### First image publish and deployment
+
+The first push to `main` runs CI and publishes both SHA-tagged GHCR packages. Azure deployment
+is intentionally gated until their visibility and credentials are configured:
+
+1. Merge the CI/deployment change through a pull request. Confirm the main-branch CI run is
+   green and both service packages exist in GHCR.
+2. Set both GHCR packages to **Public** in GitHub Packages.
+3. Set the repository Actions variable `AZURE_DEPLOY_ENABLED` to `true`, then rerun the
+   successful main-branch workflow from GitHub Actions. The deployment job uses OIDC, previews
+   each Bicep deployment with `what-if`, creates SQL users, provisions the UI Storage static
+   website and both Container Apps, uploads `ui/config.js` and the UI, and checks both service
+   `/health` endpoints.
+4. After deployment succeeds, copy the static website endpoint from the workflow summary into
+   `public_url` in `system.yaml` and the live URL below.
+
+The workflow temporarily adds the GitHub runner's current IP to the SQL firewall only while it
+creates the contained database users, then removes that rule. The deployment never creates or
+modifies a resource group.
+
+Live URL: **pending first successful Azure deployment**.
+
+If `az login` or deployment fails, first check `az account show` and verify the selected
+subscription ID and tenant. If Azure reports `ResourceGroupNotFound`, verify that the selected
+subscription contains `rg-gmahler-ieu2024`; do not create a replacement group.
+
+## Image publishing
+
+The `images` job in `.github/workflows/ci.yml` builds both service images on every push and pull
 request. On pushes to `main`, it also publishes them to GHCR using the commit SHA as the image
 tag. Pull requests and pushes to other branches build the images without publishing them.

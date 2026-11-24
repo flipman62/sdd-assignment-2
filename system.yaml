@@ -1,15 +1,16 @@
 # yaml-language-server: $schema=./system.schema.json
 student: flipman62
-prefix: flipman62
-public_url: https://example.azurestaticapps.net
+prefix: gmahler-ieu2024
+public_url: ""
 ui:
   path: ui
-  static_web_app: flipman62-ui
+  storage_account: gmahlerieu2024ui
   calls: [habits, completions]
 azure:
-  resource_group: rg-sdd-3a
-  container_apps_environment: flipman62-env
-  sql_server: flipman62-sql
+  resource_group: rg-gmahler-ieu2024
+  container_apps_environment: gmahler-ieu2024-env
+  sql_server: gmahler-ieu2024-sql
+  sql_server_location: francecentral
   registry: ghcr.io/flipman62
 services:
   habits:
@@ -34,8 +35,8 @@ services:
         description: SQL Server connection timeout in seconds.
     calls: []
     azure:
-      container_app: flipman62-habits
-      sql_database: flipman62-habits-db
+      container_app: gmahler-ieu2024-habits
+      sql_database: gmahler-ieu2024-habits-db
   completions:
     description: Completion history and consecutive-day streaks.
     path: services/completions
@@ -70,5 +71,5 @@ services:
         timeout_s: 2
         on_failure: Completion recording returns a clear 503 response.
     azure:
-      container_app: flipman62-completions
-      sql_database: flipman62-completions-db
+      container_app: gmahler-ieu2024-completions
+      sql_database: gmahler-ieu2024-completions-db

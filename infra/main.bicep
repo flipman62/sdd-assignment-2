@@ -6,9 +6,8 @@ param prefix string
 @description('Azure region')
 param location string = resourceGroup().location
 
-@secure()
-@description('SQL Server administrator password')
-param sqlAdministratorPassword string
+@description('Origin of the Azure Storage static website')
+param uiOrigin string
 
 @secure()
 @description('Habits database login password')
@@ -18,14 +17,10 @@ param habitsDatabasePassword string
 @description('Completions database login password')
 param completionsDatabasePassword string
 
-@secure()
-@description('GHCR registry password')
-param registryPassword string
-
 @description('Git SHA used in the deployed image tags')
 param gitSha string
 
-@description('GHCR registry username')
+@description('GitHub owner of the public GHCR packages')
 param registryUsername string
 
 var sqlServerName = '${prefix}-sql'
@@ -34,43 +29,39 @@ var completionsDatabaseName = '${prefix}-completions-db'
 var environmentName = '${prefix}-env'
 var habitsAppName = '${prefix}-habits'
 var completionsAppName = '${prefix}-completions'
-var staticAppName = '${prefix}-ui'
 var habitsImage = 'ghcr.io/${registryUsername}/habits:${gitSha}'
 var completionsImage = 'ghcr.io/${registryUsername}/completions:${gitSha}'
 
-resource sqlServer 'Microsoft.Sql/servers@2023-08-01-preview' existing = {
+resource sqlServer 'Microsoft.Sql/servers@2023-08-01' existing = {
   name: sqlServerName
 }
 
-resource habitsDatabase 'Microsoft.Sql/servers/databases@2023-08-01-preview' existing = {
-  parent: sqlServer
-  name: habitsDatabaseName
+resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2025-02-01' = {
+  name: '${prefix}-logs'
+  location: location
+  properties: {
+    retentionInDays: 30
+    sku: {
+      name: 'PerGB2018'
+    }
+  }
 }
 
-resource completionsDatabase 'Microsoft.Sql/servers/databases@2023-08-01-preview' existing = {
-  parent: sqlServer
-  name: completionsDatabaseName
-}
-
-resource containerEnvironment 'Microsoft.App/managedEnvironments@2024-10-02-preview' = {
+resource containerEnvironment 'Microsoft.App/managedEnvironments@2025-01-01' = {
   name: environmentName
   location: location
-  properties: {}
-}
-
-resource staticApp 'Microsoft.Web/staticSites@2024-04-01' = {
-  name: staticAppName
-  location: location
-  sku: {
-    name: 'Free'
-    tier: 'Free'
+  properties: {
+    appLogsConfiguration: {
+      destination: 'log-analytics'
+      logAnalyticsConfiguration: {
+        customerId: logAnalytics.properties.customerId
+        sharedKey: logAnalytics.listKeys().primarySharedKey
+      }
+    }
   }
-  properties: {}
 }
 
-var staticOrigin = 'https://${staticApp.properties.defaultHostname}'
-
-resource habitsApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
+resource habitsApp 'Microsoft.App/containerApps@2025-01-01' = {
   name: habitsAppName
   location: location
   properties: {
@@ -85,18 +76,12 @@ resource habitsApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
       registries: [
         {
           server: 'ghcr.io'
-          username: registryUsername
-          passwordSecretRef: 'ghcr-password'
         }
       ]
       secrets: [
         {
-          name: 'ghcr-password'
-          value: registryPassword
-        }
-        {
           name: 'database-url'
-          value: 'mssql+pymssql://habits_user:${habitsDatabasePassword}@${sqlServer.properties.fullyQualifiedDomainName}:1433/${habitsDatabaseName}'
+          value: 'mssql+pymssql://habits_user:${uriComponent(habitsDatabasePassword)}@${sqlServer.properties.fullyQualifiedDomainName}:1433/${habitsDatabaseName}'
         }
       ]
     }
@@ -108,7 +93,7 @@ resource habitsApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
           env: [
             { name: 'PORT', value: '8000' }
             { name: 'GIT_SHA', value: gitSha }
-            { name: 'CORS_ORIGINS', value: staticOrigin }
+            { name: 'CORS_ORIGINS', value: uiOrigin }
             { name: 'DB_CONNECT_TIMEOUT_S', value: '30' }
             { name: 'DATABASE_URL', secretRef: 'database-url' }
           ]
@@ -124,7 +109,7 @@ resource habitsApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
 
 var habitsUrl = 'https://${habitsApp.properties.configuration.ingress.fqdn}'
 
-resource completionsApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
+resource completionsApp 'Microsoft.App/containerApps@2025-01-01' = {
   name: completionsAppName
   location: location
   properties: {
@@ -139,18 +124,12 @@ resource completionsApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
       registries: [
         {
           server: 'ghcr.io'
-          username: registryUsername
-          passwordSecretRef: 'ghcr-password'
         }
       ]
       secrets: [
         {
-          name: 'ghcr-password'
-          value: registryPassword
-        }
-        {
           name: 'database-url'
-          value: 'mssql+pymssql://completions_user:${completionsDatabasePassword}@${sqlServer.properties.fullyQualifiedDomainName}:1433/${completionsDatabaseName}'
+          value: 'mssql+pymssql://completions_user:${uriComponent(completionsDatabasePassword)}@${sqlServer.properties.fullyQualifiedDomainName}:1433/${completionsDatabaseName}'
         }
       ]
     }
@@ -162,7 +141,7 @@ resource completionsApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
           env: [
             { name: 'PORT', value: '8000' }
             { name: 'GIT_SHA', value: gitSha }
-            { name: 'CORS_ORIGINS', value: staticOrigin }
+            { name: 'CORS_ORIGINS', value: uiOrigin }
             { name: 'DB_CONNECT_TIMEOUT_S', value: '30' }
             { name: 'HABITS_URL', value: habitsUrl }
             { name: 'HABITS_TIMEOUT_S', value: '2' }
@@ -180,4 +159,3 @@ resource completionsApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
 
 output habitsFqdn string = habitsApp.properties.configuration.ingress.fqdn
 output completionsFqdn string = completionsApp.properties.configuration.ingress.fqdn
-output staticWebAppUrl string = 'https://${staticApp.properties.defaultHostname}'

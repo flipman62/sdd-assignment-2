@@ -10,28 +10,23 @@ BEGIN
 END;
 GO
 
-IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = N'habits_user')
-BEGIN
-    CREATE LOGIN habits_user WITH PASSWORD = 'HABITS_PASSWORD_PLACEHOLDER';
-END;
-GO
-
-IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = N'completions_user')
-BEGIN
-    CREATE LOGIN completions_user WITH PASSWORD = 'COMPLETIONS_PASSWORD_PLACEHOLDER';
-END;
-GO
-
 USE [HABITS_DATABASE_PLACEHOLDER];
 GO
 
 IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = N'habits_user')
 BEGIN
-    CREATE USER habits_user FOR LOGIN habits_user;
+    CREATE USER habits_user WITH PASSWORD = 'HABITS_PASSWORD_PLACEHOLDER';
+END;
+ELSE
+BEGIN
+    ALTER USER habits_user WITH PASSWORD = 'HABITS_PASSWORD_PLACEHOLDER';
 END;
 GO
 
-ALTER ROLE db_owner ADD MEMBER habits_user;
+IF IS_ROLEMEMBER(N'db_owner', N'habits_user') <> 1
+BEGIN
+    ALTER ROLE db_owner ADD MEMBER habits_user;
+END;
 GO
 
 USE [COMPLETIONS_DATABASE_PLACEHOLDER];
@@ -39,9 +34,16 @@ GO
 
 IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = N'completions_user')
 BEGIN
-    CREATE USER completions_user FOR LOGIN completions_user;
+    CREATE USER completions_user WITH PASSWORD = 'COMPLETIONS_PASSWORD_PLACEHOLDER';
+END;
+ELSE
+BEGIN
+    ALTER USER completions_user WITH PASSWORD = 'COMPLETIONS_PASSWORD_PLACEHOLDER';
 END;
 GO
 
-ALTER ROLE db_owner ADD MEMBER completions_user;
+IF IS_ROLEMEMBER(N'db_owner', N'completions_user') <> 1
+BEGIN
+    ALTER ROLE db_owner ADD MEMBER completions_user;
+END;
 GO

@@ -9,10 +9,10 @@
     "public_url": {"type": "string"},
     "ui": {
       "type": "object",
-      "required": ["path", "static_web_app", "calls"],
+      "required": ["path", "storage_account", "calls"],
       "properties": {
         "path": {"type": "string"},
-        "static_web_app": {"type": "string"},
+        "storage_account": {"type": "string"},
         "calls": {
           "type": "array",
           "items": {"type": "string"}
@@ -22,11 +22,12 @@
     },
     "azure": {
       "type": "object",
-      "required": ["resource_group", "container_apps_environment", "sql_server", "registry"],
+      "required": ["resource_group", "container_apps_environment", "sql_server", "sql_server_location", "registry"],
       "properties": {
         "resource_group": {"type": "string"},
         "container_apps_environment": {"type": "string"},
         "sql_server": {"type": "string"},
+        "sql_server_location": {"type": "string"},
         "registry": {"type": "string"}
       },
       "additionalProperties": false

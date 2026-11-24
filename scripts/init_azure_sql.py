@@ -1,6 +1,7 @@
 import os
 import re
 import time
+from pathlib import Path
 
 import pymssql
 
@@ -12,13 +13,22 @@ def main():
     completions_password = os.environ["COMPLETIONS_DB_PASSWORD"]
     prefix = os.environ["AZURE_RESOURCE_PREFIX"]
 
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,40}", prefix):
+        raise ValueError("AZURE_RESOURCE_PREFIX must contain lowercase letters, digits, or hyphens")
+
     habits_database = f"{prefix}-habits-db"
     completions_database = f"{prefix}-completions-db"
-    sql = open("db/azure-init.sql", encoding="utf-8").read()
-    sql = sql.replace("HABITS_DATABASE_PLACEHOLDER", habits_database)
-    sql = sql.replace("COMPLETIONS_DATABASE_PLACEHOLDER", completions_database)
-    sql = sql.replace("HABITS_PASSWORD_PLACEHOLDER", habits_password)
-    sql = sql.replace("COMPLETIONS_PASSWORD_PLACEHOLDER", completions_password)
+    replacements = {
+        "HABITS_DATABASE_PLACEHOLDER": habits_database,
+        "COMPLETIONS_DATABASE_PLACEHOLDER": completions_database,
+        "HABITS_PASSWORD_PLACEHOLDER": habits_password.replace("'", "''"),
+        "COMPLETIONS_PASSWORD_PLACEHOLDER": completions_password.replace("'", "''"),
+    }
+    placeholders = re.compile("|".join(re.escape(key) for key in replacements))
+    sql = placeholders.sub(
+        lambda match: replacements[match.group()],
+        Path("db/azure-init.sql").read_text(encoding="utf-8"),
+    )
 
     connection = None
     for attempt in range(30):
